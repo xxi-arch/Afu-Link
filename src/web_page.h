@@ -31,6 +31,10 @@ th{color:#52695e;font-weight:550}td:nth-child(2){font-weight:650}.table{overflow
 summary{cursor:pointer;font-weight:600}
 form{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-top:12px}label{display:grid;gap:5px;font-size:14px}
 .check-label{display:flex;align-items:center;gap:8px}.check-label input{max-width:none}
+.ha-form{display:grid;grid-template-columns:1fr;align-items:stretch;max-width:560px}
+.ha-form label{max-width:100%}
+.ha-form input[type=url],.ha-form input[type=password]{width:100%;max-width:100%}
+.ha-form button{justify-self:start}
 input,select{padding:7px;border:1px solid #a8c4b4;border-radius:8px;background:white;font:inherit;max-width:135px}
 dialog{width:min(540px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;border:1px solid #dce8e0;border-radius:15px;padding:20px;color:inherit}
 dialog::backdrop{background:#0c2e2599}
@@ -68,20 +72,21 @@ dialog form{margin:0}.metric-source{font-size:14px;color:#52695e}
   <p class="message" id="profileMessage" role="status"></p>
 </details>
 <details class="card">
-  <summary>Home Assistant（MQTT）</summary>
-  <p class="message">填写 MQTT Broker 地址并启用上传。HA 需要先配置 MQTT 集成；保存后会自动发布设备发现配置。</p>
-  <form id="haConfig">
-    <label class="check-label"><input name="enabled" type="checkbox">启用 Home Assistant 上传</label>
-    <label>Broker 地址<input name="host" maxlength="63" placeholder="例如 192.168.10.2"></label>
-    <label>端口<input name="port" type="number" min="1" max="65535" value="1883"></label>
-    <label>用户名<input name="username" maxlength="31" autocomplete="username"></label>
-    <label>密码<input name="password" type="password" maxlength="63" autocomplete="new-password" placeholder="留空保持已保存密码"></label>
-    <label class="check-label"><input name="clearPassword" type="checkbox">清除已保存密码</label>
-    <label>数据主题前缀<input name="baseTopic" maxlength="95" value="afulink/afu-a1"></label>
-    <label>HA Discovery 前缀<input name="discoveryPrefix" maxlength="31" value="homeassistant"></label>
-    <button type="submit">保存 MQTT 配置</button>
+  <summary>Home Assistant 接入</summary>
+  <p class="message">填写 HA 根地址和长期访问令牌即可上传，不需要安装 MQTT 或其他插件。令牌在 HA 个人资料 → 安全 → 长期访问令牌中创建，请使用管理员账号。</p>
+  <form id="haConfig" class="ha-form">
+    <label>Home Assistant 地址
+      <input name="url" type="url" maxlength="127" placeholder="http://192.168.1.10:8123" autocomplete="url">
+    </label>
+    <label>长期访问令牌（Token）
+      <input name="token" type="password" maxlength="255" autocomplete="new-password" placeholder="粘贴 HA 创建的长期访问令牌">
+    </label>
+    <label class="check-label"><input name="enabled" type="checkbox">启用自动上传</label>
+    <label class="check-label"><input name="clearToken" type="checkbox">清除已保存的 Token</label>
+    <button type="submit">保存并测试连接</button>
   </form>
   <p class="message" id="haMessage" role="status">正在读取配置…</p>
+  <p class="message">目前使用局域网 HTTP 地址；HTTPS 和公网反向代理暂不支持。Token 会保存在 C3 本机，不会通过配置读取接口返回。</p>
 </details>
 </main>
 <dialog id="bodyDialog" aria-labelledby="bodyTitle">
@@ -202,13 +207,11 @@ async function loadHaConfig() {
     if (!response.ok) throw Error();
     const data = await response.json();
     haForm.elements.enabled.checked = data.enabled;
-    for (const name of ["host","port","username","baseTopic","discoveryPrefix"]) {
-      haForm.elements[name].value = data[name] ?? "";
-    }
+    haForm.elements.url.value = data.url ?? "";
     byId("haMessage").textContent =
-      (data.passwordSet ? "MQTT 密码已保存。" : "尚未设置 MQTT 密码。") + " 当前状态：" + data.status;
+      (data.tokenSet ? "Token 已保存。" : "尚未设置 Token。") + " 当前状态：" + data.status;
   } catch {
-    byId("haMessage").textContent = "无法读取 MQTT 配置。";
+    byId("haMessage").textContent = "无法读取 Home Assistant 配置。";
   }
 }
 haForm.onsubmit = async (event) => {
@@ -217,17 +220,18 @@ haForm.onsubmit = async (event) => {
   button.disabled = true;
   const params = new URLSearchParams();
   params.set("enabled", haForm.elements.enabled.checked ? "1" : "0");
-  for (const name of ["host","port","username","password","baseTopic","discoveryPrefix"]) {
-    params.set(name, haForm.elements[name].value);
-  }
-  if (haForm.elements.clearPassword.checked) params.set("clearPassword", "1");
+  params.set("url", haForm.elements.url.value.trim());
+  params.set("token", haForm.elements.token.value.trim());
+  if (haForm.elements.clearToken.checked) params.set("clearToken", "1");
+  byId("haMessage").textContent = "正在保存并测试连接…";
   try {
     const response = await fetch("/api/ha", {method:"POST",body:params});
     const data = await response.json();
     if (!response.ok) throw Error(data.error || "保存失败");
-    haForm.elements.password.value = "";
-    haForm.elements.clearPassword.checked = false;
-    byId("haMessage").textContent = "配置已保存。当前状态：" + data.status;
+    haForm.elements.token.value = "";
+    haForm.elements.clearToken.checked = false;
+    byId("haMessage").textContent =
+      (data.tokenSet ? "Token 已保存。" : "尚未设置 Token。") + " 当前状态：" + data.status;
   } catch (error) {
     byId("haMessage").textContent = "保存失败：" + error.message;
   } finally {
