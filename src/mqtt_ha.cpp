@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <esp_system.h>
 
+#include <cctype>
 #include <ctime>
 #include <cstring>
 
@@ -298,6 +299,11 @@ bool saveConfig(const Config &value) {
   prefs.putString("discovery", next.discoveryPrefix);
   prefs.end();
 
+  if (client.connected()) {
+    const String oldAvailabilityTopic = topic("availability");
+    client.publish(oldAvailabilityTopic.c_str(), "offline", true);
+    client.disconnect();
+  }
   currentConfig = next;
   reconnectRequested = true;
   discoveryPublished = false;
@@ -324,7 +330,11 @@ void loop() {
   }
 
   if (!currentConfig.enabled || !currentConfig.host[0]) {
-    if (client.connected()) client.disconnect();
+    if (client.connected()) {
+      const String availabilityTopic = topic("availability");
+      client.publish(availabilityTopic.c_str(), "offline", true);
+      client.disconnect();
+    }
     discoveryPublished = false;
     return;
   }
