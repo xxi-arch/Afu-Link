@@ -11,10 +11,25 @@
 #include "scale_ble.h"
 #include "web_page.h"
 
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+
+#ifndef AFU_WIFI_SSID
+#define AFU_WIFI_SSID ""
+#endif
+#ifndef AFU_WIFI_PASSWORD
+#define AFU_WIFI_PASSWORD ""
+#endif
+#ifndef AFU_OTA_PASSWORD
+#define AFU_OTA_PASSWORD ""
+#endif
+
 namespace {
 constexpr char kHostname[] = "afu-a1";
-constexpr char kWifiSsid[] = "esp";
-constexpr char kWifiPassword[] = "qwert1234";
+constexpr char kWifiSsid[] = AFU_WIFI_SSID;
+constexpr char kWifiPassword[] = AFU_WIFI_PASSWORD;
+constexpr char kOtaPassword[] = AFU_OTA_PASSWORD;
 
 WebServer web(80);
 bool servicesRunning = false;
@@ -148,7 +163,7 @@ void setup() {
   web.on("/api/ha", HTTP_GET, sendHaConfig);
   web.on("/api/ha", HTTP_POST, receiveHaConfig);
   ArduinoOTA.setHostname(kHostname);
-  ArduinoOTA.setPassword(kWifiPassword);
+  ArduinoOTA.setPassword(kOtaPassword);
 
   WiFi.persistent(false);
   WiFi.setHostname(kHostname);
