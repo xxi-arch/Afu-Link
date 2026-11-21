@@ -11,10 +11,11 @@ struct Config {
   char token[256]{};
 };
 
+enum class SaveResult { Saved, InvalidUrl, MissingToken, InvalidToken, StorageUnavailable };
+
 bool begin();
 Config getConfig();
-bool saveConfig(const Config &config);
-bool testConnection();
+SaveResult saveConfig(const Config &config);
 bool enqueueMeasurement(const scale::Record &record, const scale::Profile &profile);
 void loop();
 const char *status();

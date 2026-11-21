@@ -28,6 +28,7 @@ table{border-collapse:collapse;text-align:left;width:100%;font-size:14px;font-va
 th,td{padding:10px 10px;border-bottom:1px solid #e6eee8;white-space:nowrap}
 th{color:#52695e;font-weight:550}td:nth-child(2){font-weight:650}.table{overflow-x:auto}
 .message{padding:14px 0;color:#52695e;font-size:14px}.error{color:#a52625}
+#haMessage:empty{display:none}
 summary{cursor:pointer;font-weight:600}
 form{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-top:12px}label{display:grid;gap:5px;font-size:14px}
 .check-label{display:flex;align-items:center;gap:8px}.check-label input{max-width:none}
@@ -85,7 +86,8 @@ dialog form{margin:0}.metric-source{font-size:14px;color:#52695e}
     <label class="check-label"><input name="clearToken" type="checkbox">清除已保存的 Token</label>
     <button type="submit">保存并测试连接</button>
   </form>
-  <p class="message" id="haMessage" role="status">正在读取配置…</p>
+  <p class="message" id="haMessage" role="status"></p>
+  <p class="message" id="haStatus" role="status">正在读取配置…</p>
   <p class="message">目前使用局域网 HTTP 地址；HTTPS 和公网反向代理暂不支持。Token 会保存在 C3 本机，不会通过配置读取接口返回。</p>
 </details>
 </main>
@@ -201,41 +203,83 @@ form.onsubmit = async (event) => {
 };
 
 const haForm = byId("haConfig");
+const haButton = haForm.querySelector("button[type=submit]");
+const haStatus = byId("haStatus");
+const haMessage = byId("haMessage");
+const haSaveErrors = {
+  invalid_url: "请输入局域网 Home Assistant 的 HTTP 根地址，例如 http://192.168.1.10:8123。",
+  missing_token: "启用自动上传需要 Token。要清除 Token，请同时取消启用自动上传。",
+  invalid_token: "Token 格式有误，请重新粘贴长期访问令牌。",
+  token_too_long: "Token 太长，请核对粘贴内容。",
+  storage_unavailable: "设备无法写入配置，请重试。"
+};
+let haConfigLoaded = false;
+let haRead = null;
+
+function showHaMessage(message, isError = false) {
+  haMessage.textContent = message;
+  haMessage.classList.toggle("error", isError);
+}
+
+function showHaStatus(data) {
+  const message = (data.tokenSet ? "Token 已保存。" : "尚未设置 Token。") + " 当前状态：" + data.status;
+  if (haStatus.textContent !== message) haStatus.textContent = message;
+}
+
 async function loadHaConfig() {
+  if (haRead || haButton.disabled) return;
+  const request = new AbortController();
+  haRead = request;
   try {
-    const response = await fetch("/api/ha", {cache:"no-store"});
+    const response = await fetch("/api/ha", {cache:"no-store",signal:request.signal});
     if (!response.ok) throw Error();
     const data = await response.json();
-    haForm.elements.enabled.checked = data.enabled;
-    haForm.elements.url.value = data.url ?? "";
-    byId("haMessage").textContent =
-      (data.tokenSet ? "Token 已保存。" : "尚未设置 Token。") + " 当前状态：" + data.status;
+    if (request.signal.aborted) return;
+    if (!haConfigLoaded) {
+      haForm.elements.enabled.defaultChecked = data.enabled;
+      haForm.elements.url.defaultValue = data.url ?? "";
+      haConfigLoaded = true;
+    }
+    showHaStatus(data);
   } catch {
-    byId("haMessage").textContent = "无法读取 Home Assistant 配置。";
+    if (!request.signal.aborted) haStatus.textContent = "无法读取 Home Assistant 配置。";
+  } finally {
+    if (haRead === request) haRead = null;
   }
 }
+haForm.addEventListener("input", () => showHaMessage(""));
 haForm.onsubmit = async (event) => {
   event.preventDefault();
-  const button = haForm.querySelector("button[type=submit]");
-  button.disabled = true;
+  if (haButton.disabled) return;
+  haButton.disabled = true;
+  haRead?.abort();
+  haRead = null;
+  const tokenField = haForm.elements.token;
+  const clearToken = haForm.elements.clearToken.checked;
+  const token = tokenField.value;
   const params = new URLSearchParams();
   params.set("enabled", haForm.elements.enabled.checked ? "1" : "0");
   params.set("url", haForm.elements.url.value.trim());
-  params.set("token", haForm.elements.token.value.trim());
-  if (haForm.elements.clearToken.checked) params.set("clearToken", "1");
-  byId("haMessage").textContent = "正在保存并测试连接…";
+  params.set("token", token.trim());
+  if (clearToken) params.set("clearToken", "1");
+  showHaMessage("正在保存…");
   try {
     const response = await fetch("/api/ha", {method:"POST",body:params});
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      showHaMessage(haSaveErrors[data.error] ?? "保存失败，请重试。", true);
+      return;
+    }
     const data = await response.json();
-    if (!response.ok) throw Error(data.error || "保存失败");
-    haForm.elements.token.value = "";
-    haForm.elements.clearToken.checked = false;
-    byId("haMessage").textContent =
-      (data.tokenSet ? "Token 已保存。" : "尚未设置 Token。") + " 当前状态：" + data.status;
-  } catch (error) {
-    byId("haMessage").textContent = "保存失败：" + error.message;
+    if (tokenField.value === token) tokenField.value = "";
+    if (clearToken) haForm.elements.clearToken.checked = false;
+    haConfigLoaded = true;
+    showHaStatus(data);
+    showHaMessage("配置已保存。");
+  } catch {
+    showHaMessage("无法确认配置是否已保存，请检查设备连接。", true);
   } finally {
-    button.disabled = false;
+    haButton.disabled = false;
   }
 };
 loadHaConfig();

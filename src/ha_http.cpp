@@ -21,6 +21,13 @@ constexpr uint32_t kEntityCheckIntervalMs = 60000;
 constexpr uint32_t kRequestIntervalMs = 120;
 constexpr uint32_t kRetryIntervalMs = 5000;
 constexpr uint16_t kHttpTimeoutMs = 2500;
+constexpr char kConfigKey[] = "config_v1";
+
+struct StoredConfig {
+  uint8_t enabled;
+  char url[sizeof(Config::url)];
+  char token[sizeof(Config::token)];
+};
 
 struct PendingMeasurement {
   scale::Record record;
@@ -82,15 +89,15 @@ bool validUrl(const char *value) {
   return true;
 }
 
-bool validConfig(const Config &config) {
-  if (strnlen(config.url, sizeof(config.url)) >= sizeof(config.url) ||
-      strnlen(config.token, sizeof(config.token)) >= sizeof(config.token)) return false;
-  if (!config.enabled) return true;
-  if (!validUrl(config.url) || !config.token[0]) return false;
+SaveResult validateConfig(const Config &config) {
+  if (strnlen(config.url, sizeof(config.url)) == sizeof(config.url) ||
+      (config.enabled && !validUrl(config.url))) return SaveResult::InvalidUrl;
+  if (strnlen(config.token, sizeof(config.token)) == sizeof(config.token)) return SaveResult::InvalidToken;
+  if (config.enabled && !config.token[0]) return SaveResult::MissingToken;
   for (const unsigned char *p = reinterpret_cast<const unsigned char *>(config.token); *p; ++p) {
-    if (*p < 0x20 || *p == 0x7f) return false;
+    if (*p < 0x20 || *p == 0x7f) return SaveResult::InvalidToken;
   }
-  return true;
+  return SaveResult::Saved;
 }
 
 void setStatus(const char *value) {
@@ -270,12 +277,23 @@ bool begin() {
   currentConfig = Config{};
   Preferences prefs;
   if (prefs.begin("ha_http", true)) {
-    currentConfig.enabled = prefs.getBool("enabled", false);
-    prefs.getString("url", currentConfig.url, sizeof(currentConfig.url));
-    prefs.getString("token", currentConfig.token, sizeof(currentConfig.token));
+    if (prefs.isKey(kConfigKey)) {
+      StoredConfig stored{};
+      if (prefs.getBytes(kConfigKey, &stored, sizeof(stored)) == sizeof(stored) &&
+          stored.enabled <= 1 && memchr(stored.url, '\0', sizeof(stored.url)) &&
+          memchr(stored.token, '\0', sizeof(stored.token))) {
+        currentConfig.enabled = stored.enabled;
+        memcpy(currentConfig.url, stored.url, sizeof(stored.url));
+        memcpy(currentConfig.token, stored.token, sizeof(stored.token));
+      }
+    } else {
+      currentConfig.enabled = prefs.getBool("enabled", false);
+      prefs.getString("url", currentConfig.url, sizeof(currentConfig.url));
+      prefs.getString("token", currentConfig.token, sizeof(currentConfig.token));
+    }
     prefs.end();
   }
-  if (!validConfig(currentConfig)) currentConfig.enabled = false;
+  if (validateConfig(currentConfig) != SaveResult::Saved) currentConfig.enabled = false;
   pendingQueue = xQueueCreate(kQueueLength, sizeof(PendingMeasurement));
   setStatus(currentConfig.enabled ? "等待连接 HA" : "未启用");
   return pendingQueue != nullptr;
@@ -285,20 +303,27 @@ Config getConfig() {
   return currentConfig;
 }
 
-bool saveConfig(const Config &value) {
-  Config next = value;
-  next.url[sizeof(next.url) - 1] = '\0';
-  next.token[sizeof(next.token) - 1] = '\0';
-  if (!validConfig(next)) return false;
+SaveResult saveConfig(const Config &config) {
+  const auto validation = validateConfig(config);
+  if (validation != SaveResult::Saved) return validation;
+
+  StoredConfig stored{};
+  stored.enabled = config.enabled;
+  strlcpy(stored.url, config.url, sizeof(stored.url));
+  strlcpy(stored.token, config.token, sizeof(stored.token));
 
   Preferences prefs;
-  if (!prefs.begin("ha_http", false)) return false;
-  prefs.putBool("enabled", next.enabled);
-  prefs.putString("url", next.url);
-  prefs.putString("token", next.token);
+  if (!prefs.begin("ha_http", false)) return SaveResult::StorageUnavailable;
+  if (prefs.putBytes(kConfigKey, &stored, sizeof(stored)) != sizeof(stored)) {
+    return SaveResult::StorageUnavailable;
+  }
+  // Remove the old layout after committing the replacement, including its copy of the token.
+  for (const char *key : {"token", "url", "enabled"}) {
+    if (prefs.isKey(key)) prefs.remove(key);
+  }
   prefs.end();
 
-  currentConfig = next;
+  currentConfig = config;
   apiReady = false;
   lastApiCheck = 0;
   lastEntityCheck = 0;
@@ -306,29 +331,8 @@ bool saveConfig(const Config &value) {
   requestDelayMs = kRequestIntervalMs;
   activeValid = false;
   activeSensor = 0;
-  setStatus(currentConfig.enabled ? "配置已保存，等待测试" : "未启用");
-  return true;
-}
-
-bool testConnection() {
-  if (!currentConfig.enabled) {
-    setStatus("未启用");
-    return false;
-  }
-  if (WiFi.status() != WL_CONNECTED) {
-    setStatus("设备 Wi-Fi 未连接");
-    return false;
-  }
-  const int code = request("/api/");
-  lastApiCheck = millis();
-  apiReady = code == 200;
-  if (apiReady) {
-    setStatus("HA 连接成功");
-    lastEntityCheck = 0;
-    return true;
-  }
-  setHttpStatus(code);
-  return false;
+  setStatus(currentConfig.enabled ? "等待测试 HA 连接" : "未启用");
+  return SaveResult::Saved;
 }
 
 bool enqueueMeasurement(const scale::Record &record, const scale::Profile &profile) {

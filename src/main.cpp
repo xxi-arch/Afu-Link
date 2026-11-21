@@ -112,12 +112,23 @@ void receiveHaConfig() {
     web.send(400, "application/json", R"({"error":"token_too_long"})");
     return;
   }
-  if (!ha_http::saveConfig(config)) {
-    web.send(400, "application/json", R"({"error":"invalid_config"})");
-    return;
+  switch (ha_http::saveConfig(config)) {
+    case ha_http::SaveResult::Saved:
+      sendHaConfig();
+      return;
+    case ha_http::SaveResult::InvalidUrl:
+      web.send(400, "application/json", R"({"error":"invalid_url"})");
+      return;
+    case ha_http::SaveResult::MissingToken:
+      web.send(400, "application/json", R"({"error":"missing_token"})");
+      return;
+    case ha_http::SaveResult::InvalidToken:
+      web.send(400, "application/json", R"({"error":"invalid_token"})");
+      return;
+    case ha_http::SaveResult::StorageUnavailable:
+      web.send(503, "application/json", R"({"error":"storage_unavailable"})");
+      return;
   }
-  if (config.enabled) ha_http::testConnection();
-  sendHaConfig();
 }
 }  // namespace
 
