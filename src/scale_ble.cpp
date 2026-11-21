@@ -8,7 +8,7 @@
 #include <ctime>
 
 #include "history.h"
-#include "mqtt_ha.h"
+#include "ha_http.h"
 
 namespace scale {
 namespace {
@@ -70,7 +70,7 @@ void store(Capture &capture, bool disconnected = false) {
     if (!record.time) record.time = now();
     const bool saved = history::append(record, profile);
     Serial.println(saved ? "Scale: measurement saved" : "Scale: storage write failed");
-    if (!ha_mqtt::enqueueMeasurement(record, profile)) {
+    if (!ha_http::enqueueMeasurement(record, profile)) {
       Serial.println("HA: measurement queued unsuccessfully");
     }
   }
