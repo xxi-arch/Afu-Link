@@ -53,7 +53,7 @@ void receiveProfile() {
 String jsonEscape(const char *value) {
   String result;
   for (const char *p = value; *p; ++p) {
-    if (*p == '"' || *p == '\\\\') result += '\\\\';
+    if (*p == 34 || *p == 92) result += static_cast<char>(92);
     if (static_cast<uint8_t>(*p) >= 0x20) result += *p;
   }
   return result;
@@ -68,16 +68,28 @@ bool copyArgument(const char *name, char *destination, size_t capacity) {
 
 void sendHaConfig() {
   const auto config = ha_mqtt::getConfig();
-  String json = "{\\"enabled\\":";
+  String json = R"({"enabled":)";
   json += config.enabled ? "true" : "false";
-  json += ",\\"host\\":\\"" + jsonEscape(config.host) + "\\"";
-  json += ",\\"port\\":" + String(config.port);
-  json += ",\\"username\\":\\"" + jsonEscape(config.username) + "\\"";
-  json += ",\\"passwordSet\\":";
+  json += R"(,"host":")";
+  json += jsonEscape(config.host);
+  json += '"';
+  json += R"(,"port":)";
+  json += String(config.port);
+  json += R"(,"username":")";
+  json += jsonEscape(config.username);
+  json += '"';
+  json += R"(,"passwordSet":)";
   json += config.password[0] ? "true" : "false";
-  json += ",\\"baseTopic\\":\\"" + jsonEscape(config.baseTopic) + "\\"";
-  json += ",\\"discoveryPrefix\\":\\"" + jsonEscape(config.discoveryPrefix) + "\\"";
-  json += ",\\"status\\":\\"" + jsonEscape(ha_mqtt::status()) + "\\"}";
+  json += R"(,"baseTopic":")";
+  json += jsonEscape(config.baseTopic);
+  json += '"';
+  json += R"(,"discoveryPrefix":")";
+  json += jsonEscape(config.discoveryPrefix);
+  json += '"';
+  json += R"(,"status":")";
+  json += jsonEscape(ha_mqtt::status());
+  json += '"';
+  json += '}';
   web.sendHeader("Cache-Control", "no-store");
   web.send(200, "application/json", json);
 }
@@ -90,20 +102,20 @@ void receiveHaConfig() {
       !copyArgument("username", config.username, sizeof(config.username)) ||
       !copyArgument("baseTopic", config.baseTopic, sizeof(config.baseTopic)) ||
       !copyArgument("discoveryPrefix", config.discoveryPrefix, sizeof(config.discoveryPrefix))) {
-    web.send(400, "application/json", "{\\"error\\":\\"invalid_config\\"}");
+    web.send(400, "application/json", R"({"error":"invalid_config"})");
     return;
   }
   config.port = static_cast<uint16_t>(port);
   if (web.arg("clearPassword") == "1") {
-    config.password[0] = '\\0';
+    config.password[0] = 0;
   } else if (web.hasArg("password") && web.arg("password").length()) {
     if (!copyArgument("password", config.password, sizeof(config.password))) {
-      web.send(400, "application/json", "{\\"error\\":\\"password_too_long\\"}");
+      web.send(400, "application/json", R"({"error":"password_too_long"})");
       return;
     }
   }
   if (!ha_mqtt::saveConfig(config)) {
-    web.send(400, "application/json", "{\\"error\\":\\"invalid_config\\"}");
+    web.send(400, "application/json", R"({"error":"invalid_config"})");
     return;
   }
   sendHaConfig();
