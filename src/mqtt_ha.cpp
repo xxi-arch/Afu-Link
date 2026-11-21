@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <esp_system.h>
 
+#include <atomic>
 #include <cctype>
 #include <ctime>
 #include <cstring>
@@ -63,6 +64,7 @@ QueueHandle_t pendingQueue = nullptr;
 Config currentConfig;
 bool discoveryPublished = false;
 bool reconnectRequested = false;
+std::atomic<bool> uploadEnabled{false};
 uint32_t lastConnectAttempt = 0;
 uint32_t lastDiscoveryAttempt = 0;
 uint32_t lastPublishAt = 0;
@@ -262,6 +264,7 @@ void loadConfig() {
   prefs.getString("discovery", currentConfig.discoveryPrefix, sizeof(currentConfig.discoveryPrefix));
   prefs.end();
   if (!validConfig(currentConfig)) currentConfig.enabled = false;
+  uploadEnabled.store(currentConfig.enabled && currentConfig.host[0]);
 }
 
 }  // namespace
@@ -305,6 +308,7 @@ bool saveConfig(const Config &value) {
     client.disconnect();
   }
   currentConfig = next;
+  uploadEnabled.store(currentConfig.enabled && currentConfig.host[0]);
   reconnectRequested = true;
   discoveryPublished = false;
   return true;
@@ -312,6 +316,7 @@ bool saveConfig(const Config &value) {
 
 bool enqueueMeasurement(const scale::Record &record, const scale::Profile &profile) {
   if (!pendingQueue) return false;
+  if (!uploadEnabled.load()) return true;
   PendingMeasurement pending{};
   pending.record = record;
   pending.profile = profile;
