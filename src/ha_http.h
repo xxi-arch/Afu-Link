@@ -1,0 +1,22 @@
+#pragma once
+
+#include "body_composition.h"
+#include "scale_protocol.h"
+
+namespace ha_http {
+
+struct Config {
+  bool enabled = false;
+  char url[128]{};
+  char token[256]{};
+};
+
+bool begin();
+Config getConfig();
+bool saveConfig(const Config &config);
+bool testConnection();
+bool enqueueMeasurement(const scale::Record &record, const scale::Profile &profile);
+void loop();
+const char *status();
+
+}  // namespace ha_http
