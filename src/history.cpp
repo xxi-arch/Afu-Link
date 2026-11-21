@@ -163,6 +163,33 @@ bool append(const scale::Record &record, const scale::Profile &profile) {
   return saved;
 }
 
+bool latest(scale::Record &record, scale::BodyComposition &body) {
+  if (!mounted || !access) return false;
+  bool found = false;
+  xSemaphoreTake(access, portMAX_DELAY);
+  if (count) {
+    const int file = open(kPath, O_RDONLY);
+    SavedMeasurement entry;
+    found = file >= 0 && readEntry(file, count - 1, entry);
+    if (found) {
+      record = entry.record;
+      body = entry.body;
+    }
+    if (file >= 0) close(file);
+  } else if (legacyCount) {
+    const int file = open(kLegacyPath, O_RDONLY);
+    scale::Record entry;
+    found = file >= 0 && readEntry(file, legacyCount - 1, entry);
+    if (found) {
+      record = entry;
+      body = {};
+    }
+    if (file >= 0) close(file);
+  }
+  xSemaphoreGive(access);
+  return found;
+}
+
 String page(uint32_t before) {
   if (!mounted) return F("{\"writable\":false,\"count\":0,\"next\":0,\"rows\":[]}");
   String json;
