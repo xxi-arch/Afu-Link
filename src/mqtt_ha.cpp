@@ -333,6 +333,7 @@ bool enqueueMeasurement(const scale::Record &record, const scale::Profile &profi
 }
 
 void loop() {
+  if (!pendingQueue) return;
   if (reconnectRequested) {
     if (client.connected()) client.disconnect();
     reconnectRequested = false;
