@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>阿福体重记录</title>
+<link rel="icon" type="image/png" sizes="64x64" href="/scale.png">
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<main>
+<header>
+  <h1><img class="scale-icon" src="/scale.png" width="36" height="36" alt="">阿福体重记录</h1>
+  <span id="status" class="status" role="status">正在连接</span>
+</header>
+<section class="overview" aria-label="测量概览">
+  <div class="card latest"><p class="label">最近一次体重</p><p class="value"><span id="weight">—</span> <small>kg</small></p><small id="latestTime">—</small></div>
+  <div class="card"><p class="label">已保存测量</p><p class="value" id="count">—</p></div>
+</section>
+<section class="card">
+  <div class="bar"><h2>测量历史</h2><div class="buttons"><button id="newest">最新</button><button id="older" disabled>更早</button></div></div>
+  <p class="message" id="message" role="status"></p>
+  <p class="message error" id="deleteMessage" role="status"></p>
+  <div class="table"><table>
+    <thead><tr><th scope="col">测量时间</th><th scope="col">体重 kg</th><th scope="col">BMI</th><th scope="col">体脂率</th><th scope="col">阻抗原始值 (ADC)</th><th scope="col">体成分</th><th scope="col">操作</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+</section>
+<details class="card">
+  <summary>体脂秤资料</summary>
+  <p class="message">填写身高、年龄和性别后，C3 会为后续称重估算体脂等指标。资料未填齐时只保存称重数据。</p>
+  <form id="profile">
+    <label>身高 (cm)<input name="height" type="number" required min="80" max="230"></label>
+    <label>年龄<input name="age" type="number" required min="5" max="120"></label>
+    <label>性别<select name="sex" required><option value="">请选择</option><option value="1">男</option><option value="2">女</option></select></label>
+    <button type="submit">保存资料</button>
+  </form>
+  <p class="message" id="profileMessage" role="status"></p>
+</details>
+<details class="card">
+  <summary>Home Assistant 接入</summary>
+  <p class="message">填写 HA 根地址和长期访问令牌即可上传，不需要安装 MQTT 或其他插件。令牌在 HA 个人资料 → 安全 → 长期访问令牌中创建，请使用管理员账号。</p>
+  <form id="haConfig" class="ha-form">
+    <label>Home Assistant 地址
+      <input name="url" type="url" maxlength="127" placeholder="http://192.168.1.10:8123" autocomplete="url">
+    </label>
+    <label>长期访问令牌（Token）
+      <input name="token" type="password" maxlength="255" autocomplete="new-password" placeholder="粘贴 HA 创建的长期访问令牌">
+    </label>
+    <label class="check-label"><input name="enabled" type="checkbox">启用自动上传</label>
+    <label class="check-label"><input name="clearToken" type="checkbox">清除已保存的 Token</label>
+    <button type="submit">保存并测试连接</button>
+  </form>
+  <p class="message" id="haMessage" role="status"></p>
+  <p class="message" id="haStatus" role="status">正在读取配置…</p>
+  <p class="message">目前使用局域网 HTTP 地址；HTTPS 和公网反向代理暂不支持。Token 会保存在 C3 本机，不会通过配置读取接口返回。</p>
+</details>
+</main>
+<dialog id="bodyDialog" aria-labelledby="bodyTitle">
+  <div class="bar"><h2 id="bodyTitle">体成分详情</h2><form method="dialog"><button>关闭</button></form></div>
+  <p id="bodyContext" class="metric-source"></p>
+  <dl id="metricList" class="metrics"></dl>
+</dialog>
+</body>
+</html>

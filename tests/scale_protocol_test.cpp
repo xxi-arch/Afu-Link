@@ -17,9 +17,72 @@ constexpr uint8_t kAdc[kPacketSize] = {
 void assertMetric(const BodyMetric &metric, uint16_t percent, uint16_t kg) {
   assert(metric.deciPercent == percent && metric.deciKg == kg);
 }
+
+void updateChecksum(uint8_t (&packet)[kPacketSize]) {
+  packet[19] = 0;
+  for (size_t i = 2; i < 19; ++i) packet[19] += packet[i];
+}
+
+void checkScaleHistory() {
+  // Synthetic subtype-2 D8 with the same weight encoding and ADC values as the live fixture.
+  uint8_t packet[kPacketSize] = {
+      0xac, 0x29, 2, 0x65, 0x53, 0xf1, 0x00, 0x80, 0x68, 0xe2,
+      0xc2, 3, 2, 0x01, 0xfa, 0x01, 0xd8, 0x29, 0xd8, 0};
+  updateChecksum(packet);
+  assert(decode(packet, sizeof(packet)).type == FrameType::None);
+  // Use a timestamp after the earliest valid clock date.
+  packet[3] = 0x66;
+  updateChecksum(packet);
+  const auto newer = decode(packet, sizeof(packet));
+  assert(newer.type == FrameType::History && newer.time == 1716777216);
+  assert(newer.grams == 58050 && newer.centiKg == 5805 && newer.algorithm == 41);
+  assert(newer.adcCount == 2 && newer.adc[0] == 506 && newer.adc[1] == 472);
+
+  Record historical;
+  historical.source = RecordSource::ScaleHistory;
+  historical.time = newer.time;
+  historical.grams = newer.grams;
+  historical.adcCount = 1;
+  historical.adc[0] = newer.adc[0];
+  assert(sameMeasurement(historical, historical));
+
+  Record live = historical;
+  live.source = RecordSource::Live;
+  live.time += 7;
+  assert(sameMeasurement(live, historical));
+  ++live.adc[0];
+  assert(!sameMeasurement(live, historical));
+  assert(!sameMeasurement(live, live));
+
+  Record nextHistory = historical;
+  ++nextHistory.time;
+  assert(!sameMeasurement(historical, nextHistory));
+
+  Capture capture;
+  capture.feed(newer, 1, newer.time, {});
+  Record captured;
+  Profile profile;
+  assert(!capture.take(captured, profile, 2, true));
+
+  ++packet[19];
+  assert(decode(packet, sizeof(packet)).type == FrameType::None);
+  packet[12] = 255;
+  updateChecksum(packet);
+  assert(decode(packet, sizeof(packet)).type == FrameType::None);
+
+  packet[2] = 0;
+  packet[14] = 1;
+  packet[15] = 0x01;
+  packet[16] = 0xd8;
+  updateChecksum(packet);
+  const auto heartRateLayout = decode(packet, sizeof(packet));
+  assert(heartRateLayout.type == FrameType::History && heartRateLayout.adcCount == 1);
+  assert(heartRateLayout.adc[0] == 472 && heartRateLayout.algorithm == 41);
+}
 }  // namespace
 
 int main() {
+  checkScaleHistory();
   const Frame weight = decode(kWeight, sizeof(kWeight));
   assert(weight.type == FrameType::Weight && weight.stable && weight.centiKg == 5805);
   assert(weight.grams == 58050 && weight.algorithm == 41);

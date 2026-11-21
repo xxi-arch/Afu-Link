@@ -9,7 +9,7 @@
 #include "history.h"
 #include "ha_http.h"
 #include "scale_ble.h"
-#include "web_page.h"
+#include "web_assets.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -33,6 +33,12 @@ constexpr char kOtaPassword[] = AFU_OTA_PASSWORD;
 
 WebServer web(80);
 bool servicesRunning = false;
+
+template <size_t Size>
+void sendWebAsset(const char *contentType, const uint8_t (&data)[Size]) {
+  web.sendHeader("Cache-Control", "no-cache");
+  web.send_P(200, contentType, reinterpret_cast<const char *>(data), Size);
+}
 
 uint32_t readNumber(const char *key, uint32_t maximum) {
   const String text = web.arg(key);
@@ -62,6 +68,20 @@ void receiveProfile() {
     web.send(503, "application/json", "{\"error\":\"storage_unavailable\"}");
   } else {
     sendProfile();
+  }
+}
+
+void deleteMeasurement() {
+  switch (history::hide(readNumber("id", 999999))) {
+    case history::DeleteResult::Deleted:
+      web.send(204);
+      return;
+    case history::DeleteResult::NotFound:
+      web.send(404, "application/json", R"({"error":"measurement_not_found"})");
+      return;
+    case history::DeleteResult::Failed:
+      web.send(503, "application/json", R"({"error":"storage_unavailable"})");
+      return;
   }
 }
 
@@ -140,7 +160,10 @@ void setup() {
   Serial.println(ha_http::begin() ? "HA: REST queue ready" : "HA: REST queue unavailable");
   scale::beginReceiver();
 
-  web.on("/", HTTP_GET, [] { web.send_P(200, "text/html; charset=utf-8", kWebPage); });
+  web.on("/", HTTP_GET, [] { sendWebAsset("text/html; charset=utf-8", web_assets::kIndex); });
+  web.on("/styles.css", HTTP_GET, [] { sendWebAsset("text/css; charset=utf-8", web_assets::kStyles); });
+  web.on("/app.js", HTTP_GET, [] { sendWebAsset("text/javascript; charset=utf-8", web_assets::kScript); });
+  web.on("/scale.png", HTTP_GET, [] { sendWebAsset("image/png", web_assets::kScaleIcon); });
   web.on("/api/measurements", HTTP_GET, [] {
     String json = history::page(readNumber("before", 999999));
     json.remove(json.length() - 1);
@@ -153,6 +176,7 @@ void setup() {
     web.send(200, "application/json", json);
   });
   web.on("/api/profile", HTTP_GET, sendProfile);
+  web.on("/api/measurements", HTTP_DELETE, deleteMeasurement);
   web.on("/api/profile", HTTP_POST, receiveProfile);
   web.on("/api/ha", HTTP_GET, sendHaConfig);
   web.on("/api/ha", HTTP_POST, receiveHaConfig);

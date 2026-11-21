@@ -17,6 +17,8 @@ struct Profile {
   bool valid() const;
 };
 
+enum class RecordSource : uint8_t { Live, ScaleHistory };
+
 struct Record {
   uint32_t time = 0;
   uint32_t grams = 0;
@@ -25,15 +27,17 @@ struct Record {
   uint8_t adcCount = 0;
   uint8_t algorithm = 0;
   uint8_t heightCm = 0;
-  uint8_t reserved[5]{};
+  RecordSource source = RecordSource::Live;  // Uses a byte reserved in v1/v2 records.
+  uint8_t reserved[4]{};
   uint32_t checksum = 0;
 };
 static_assert(sizeof(Record) == 32);
 
-enum class FrameType { None, Weight, Adc };
+enum class FrameType { None, Weight, Adc, History };
 
 struct Frame {
   FrameType type = FrameType::None;
+  uint32_t time = 0;
   uint32_t grams = 0;
   uint16_t centiKg = 0;
   bool stable = false;
@@ -45,6 +49,7 @@ struct Frame {
 // AFU-WL scale27 GATT frames described by the reference project.
 Frame decode(const uint8_t *data, size_t length);
 void encodeProfile(uint8_t (&packet)[kPacketSize], uint32_t time, const Profile &profile);
+bool sameMeasurement(const Record &left, const Record &right);
 
 class Capture {
  public:

@@ -4,6 +4,7 @@ namespace scale {
 namespace {
 constexpr uint32_t kAdcWaitMs = 18000;
 constexpr uint32_t kNewWakeAfterMs = 12000;
+constexpr uint32_t kReplayWindowSeconds = 12;
 
 uint16_t displayWeight(uint32_t grams, uint8_t division) {
   switch (division) {
@@ -18,12 +19,54 @@ uint16_t displayWeight(uint32_t grams, uint8_t division) {
   }
 }
 
+uint32_t readUint32(const uint8_t *data) {
+  return (uint32_t(data[0]) << 24) | (uint32_t(data[1]) << 16) | (uint32_t(data[2]) << 8) | data[3];
+}
+
 void readWeight(Frame &frame, const uint8_t *data) {
-  const uint32_t encoded = (uint32_t(data[0]) << 24) | (uint32_t(data[1]) << 16) |
-                           (uint32_t(data[2]) << 8) | data[3];
+  const uint32_t encoded = readUint32(data);
   frame.grams = encoded & 0x3ffff;
   frame.centiKg = displayWeight(frame.grams, (encoded >> 18) & 7);
   frame.stable = (encoded >> 31) != 0;
+}
+
+Frame readHistory(const uint8_t *data) {
+  Frame frame{};
+  frame.time = readUint32(data + 3);
+  readWeight(frame, data + 7);
+  if (frame.time < kClockReady || !frame.grams) return {};
+
+  size_t adcOffset = 0;
+  size_t adcCount = 0;
+  size_t afterAdcs = 0;
+  switch (data[2]) {
+    case 0:  // Heart rate and a count of ADC values.
+      adcOffset = 15;
+      adcCount = data[14];
+      break;
+    case 2:  // Remaining-history count followed by the ADC count.
+      adcOffset = 13;
+      adcCount = data[12];
+      break;
+    default:  // Fixed pair of ADC values followed by two auxiliary bytes.
+      adcOffset = 11;
+      adcCount = 2;
+      afterAdcs = 2;
+      break;
+  }
+
+  constexpr size_t payloadEnd = 18;
+  if (adcCount > kAdcLimit) return {};
+  const size_t available = (payloadEnd - adcOffset - afterAdcs) / 2;
+  frame.type = FrameType::History;
+  frame.adcCount = adcCount < available ? adcCount : available;
+  for (size_t i = 0; i < frame.adcCount; ++i) {
+    const size_t offset = adcOffset + 2 * i;
+    frame.adc[i] = (uint16_t(data[offset]) << 8) | data[offset + 1];
+  }
+  const size_t algorithmOffset = adcOffset + 2 * adcCount + afterAdcs;
+  frame.algorithm = algorithmOffset < payloadEnd ? data[algorithmOffset] : 0;
+  return frame;
 }
 }  // namespace
 
@@ -52,6 +95,8 @@ Frame decode(const uint8_t *data, size_t length) {
       frame.adc[i] = (uint16_t(data[4 + 2 * i]) << 8) | data[5 + 2 * i];
     }
     if (data[modeOffset] == 1 && modeOffset + 4 <= 17) readWeight(frame, data + modeOffset + 1);
+  } else if (data[18] == 0xd8) {
+    return readHistory(data);
   }
   return frame;
 }
@@ -71,6 +116,25 @@ void encodeProfile(uint8_t (&packet)[kPacketSize], uint32_t time, const Profile 
   for (size_t i = 2; i < 19; ++i) packet[19] += packet[i];
 }
 
+bool sameMeasurement(const Record &left, const Record &right) {
+  const bool leftHistory = left.source == RecordSource::ScaleHistory;
+  const bool rightHistory = right.source == RecordSource::ScaleHistory;
+  if ((!leftHistory && !rightHistory) || !left.time || !right.time || left.grams != right.grams) return false;
+  if (left.time == right.time) return true;
+  if (leftHistory == rightHistory) return false;
+
+  const uint32_t difference = left.time > right.time ? left.time - right.time : right.time - left.time;
+  if (!left.adcCount || !right.adcCount) return difference <= 2;
+  if (difference > kReplayWindowSeconds) return false;
+  // Live readings use the C3's receive time. Require a matching ADC for a wider window.
+  for (size_t i = 0; i < left.adcCount; ++i) {
+    for (size_t j = 0; j < right.adcCount; ++j) {
+      if (left.adc[i] && left.adc[i] == right.adc[j]) return true;
+    }
+  }
+  return false;
+}
+
 void Capture::setWeight(const Frame &frame, uint32_t nowMs, uint32_t time, const Profile &profile) {
   if (!pending_.grams) {
     stableAt_ = nowMs;
@@ -84,7 +148,7 @@ void Capture::setWeight(const Frame &frame, uint32_t nowMs, uint32_t time, const
 }
 
 void Capture::feed(const Frame &frame, uint32_t nowMs, uint32_t time, const Profile &profile) {
-  if (frame.type == FrameType::None) return;
+  if (frame.type != FrameType::Weight && frame.type != FrameType::Adc) return;
   if (captured_ && nowMs - lastPacketAt_ >= kNewWakeAfterMs) captured_ = false;
   lastPacketAt_ = nowMs;
 

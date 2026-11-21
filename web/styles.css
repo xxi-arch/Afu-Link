@@ -1,0 +1,41 @@
+:root{color-scheme:light;font-family:system-ui,sans-serif;color:#16342d;background:#f2f6f3}
+*{box-sizing:border-box}body{margin:0}
+main{max-width:880px;margin:auto;padding:clamp(20px,5vw,48px)}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:22px}
+h1,h2,p{margin:0}h1{font-size:clamp(24px,4vw,34px);letter-spacing:-.04em}h2{font-size:18px}
+header h1{display:flex;align-items:center;gap:10px}
+.scale-icon{display:block;flex:none}
+.status{background:#e1efe6;border-radius:20px;padding:7px 12px;font-size:13px;color:#215940}
+.overview{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:16px}
+.card{background:#fff;border:1px solid #dce8e0;border-radius:15px;padding:20px;margin-bottom:16px}
+.overview .card{margin:0}.latest{background:#183c31;color:#f4fff7;border-color:#183c31}
+.label{font-size:14px;color:#52695e}.latest .label,.latest small{color:#c9e1d0}
+.value{font-size:clamp(32px,6vw,54px);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.05em;margin:3px 0}
+.value small{font-size:16px;font-weight:500;letter-spacing:0}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
+.buttons{display:flex;gap:8px;flex-wrap:wrap}
+button{border:1px solid #b8d1c2;border-radius:8px;background:#edf5ef;color:#174b39;padding:7px 12px;font:inherit;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid #337957;outline-offset:2px}
+table{border-collapse:collapse;text-align:left;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{padding:10px 10px;border-bottom:1px solid #e6eee8;white-space:nowrap}
+th{color:#52695e;font-weight:550}td:nth-child(2){font-weight:650}.table{overflow-x:auto}
+.message{padding:14px 0;color:#52695e;font-size:14px}.error{color:#a52625}
+#haMessage:empty,#deleteMessage:empty{display:none}
+.history-source{display:block;color:#52695e}
+.delete-measurement{color:#a52625}
+summary{cursor:pointer;font-weight:600}
+form{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-top:12px}label{display:grid;gap:5px;font-size:14px}
+.check-label{display:flex;align-items:center;gap:8px}.check-label input{max-width:none}
+.ha-form{display:grid;grid-template-columns:1fr;align-items:stretch;max-width:560px}
+.ha-form label{max-width:100%}
+.ha-form input[type=url],.ha-form input[type=password]{width:100%;max-width:100%}
+.ha-form button{justify-self:start}
+input,select{padding:7px;border:1px solid #a8c4b4;border-radius:8px;background:white;font:inherit;max-width:135px}
+dialog{width:min(540px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;border:1px solid #dce8e0;border-radius:15px;padding:20px;color:inherit}
+dialog::backdrop{background:#0c2e2599}
+dialog form{margin:0}.metric-source{font-size:14px;color:#52695e}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:9px;margin-bottom:0}
+.metrics div{background:#f2f6f3;border-radius:9px;padding:10px}.metrics dt{font-size:13px;color:#52695e}
+.metrics dd{margin:3px 0 0;font-weight:600;font-variant-numeric:tabular-nums}
+@media(max-width:480px){main{padding:16px}.card{padding:14px}.overview{gap:10px}.bar{align-items:start;flex-wrap:wrap}}

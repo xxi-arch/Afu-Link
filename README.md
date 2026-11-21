@@ -8,6 +8,7 @@
 - 解析 FFB0 / FFB1 / FFB2 通信。
 - 本地估算 BMI、体脂率及其他身体组成指标。
 - LittleFS 保存测量历史，设备 Web 页面查看记录和维护个人资料。
+- 每次蓝牙连接接收秤的 D8 历史通知，按测量时间补录并跳过已有记录。网页删除会在 ESP32-C3 保存标记，后续同步仍会跳过该记录。
 - ArduinoOTA 固件升级。
 - 通过 Home Assistant REST API 上传体重和身体组成数据，自动创建 17 个状态实体。
 
@@ -37,6 +38,10 @@
    - 环境：`usb`（串口烧录）
    - 环境：`ota`（网络 OTA）
 3. OTA 构建 / 上传时，在运行 PlatformIO 的环境中设置 `AFU_OTA_PASSWORD`，使其与 `src/secrets.h` 中的 OTA 密码一致。
+
+网页源码在 `web/`，包括 `index.html`、`styles.css`、`app.js` 和电子秤图标 `scale.png`。修改这些文件后，重新构建并上传固件即可更新网页。
+
+合宙 LuatOS ESP32C3-CORE 的 D4（GPIO12）在固件启动后常亮。接通体脂秤的蓝牙通知时 D5（GPIO13）也亮，断开后 D5 熄灭。板载灯为单色、高电平点亮，Flash 使用 DIO 模式。 [合宙板卡文档](https://wiki-zh.luatos.org/chips/esp32c3/board.html)
 
 ## 注意
 
