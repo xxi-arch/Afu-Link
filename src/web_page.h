@@ -30,6 +30,7 @@ th{color:#52695e;font-weight:550}td:nth-child(2){font-weight:650}.table{overflow
 .message{padding:14px 0;color:#52695e;font-size:14px}.error{color:#a52625}
 summary{cursor:pointer;font-weight:600}
 form{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-top:12px}label{display:grid;gap:5px;font-size:14px}
+.check-label{display:flex;align-items:center;gap:8px}.check-label input{max-width:none}
 input,select{padding:7px;border:1px solid #a8c4b4;border-radius:8px;background:white;font:inherit;max-width:135px}
 dialog{width:min(540px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;border:1px solid #dce8e0;border-radius:15px;padding:20px;color:inherit}
 dialog::backdrop{background:#0c2e2599}
@@ -65,6 +66,22 @@ dialog form{margin:0}.metric-source{font-size:14px;color:#52695e}
     <button type="submit">保存资料</button>
   </form>
   <p class="message" id="profileMessage" role="status"></p>
+</details>
+<details class="card">
+  <summary>Home Assistant（MQTT）</summary>
+  <p class="message">填写 MQTT Broker 地址并启用上传。HA 需要先配置 MQTT 集成；保存后会自动发布设备发现配置。</p>
+  <form id="haConfig">
+    <label class="check-label"><input name="enabled" type="checkbox">启用 Home Assistant 上传</label>
+    <label>Broker 地址<input name="host" maxlength="63" placeholder="例如 192.168.10.2"></label>
+    <label>端口<input name="port" type="number" min="1" max="65535" value="1883"></label>
+    <label>用户名<input name="username" maxlength="31" autocomplete="username"></label>
+    <label>密码<input name="password" type="password" maxlength="63" autocomplete="new-password" placeholder="留空保持已保存密码"></label>
+    <label class="check-label"><input name="clearPassword" type="checkbox">清除已保存密码</label>
+    <label>数据主题前缀<input name="baseTopic" maxlength="95" value="afulink/afu-a1"></label>
+    <label>HA Discovery 前缀<input name="discoveryPrefix" maxlength="31" value="homeassistant"></label>
+    <button type="submit">保存 MQTT 配置</button>
+  </form>
+  <p class="message" id="haMessage" role="status">正在读取配置…</p>
 </details>
 </main>
 <dialog id="bodyDialog" aria-labelledby="bodyTitle">
@@ -177,6 +194,47 @@ form.onsubmit = async (event) => {
     button.disabled = false;
   }
 };
+
+const haForm = byId("haConfig");
+async function loadHaConfig() {
+  try {
+    const response = await fetch("/api/ha", {cache:"no-store"});
+    if (!response.ok) throw Error();
+    const data = await response.json();
+    haForm.elements.enabled.checked = data.enabled;
+    for (const name of ["host","port","username","baseTopic","discoveryPrefix"]) {
+      haForm.elements[name].value = data[name] ?? "";
+    }
+    byId("haMessage").textContent =
+      (data.passwordSet ? "MQTT 密码已保存。" : "尚未设置 MQTT 密码。") + " 当前状态：" + data.status;
+  } catch {
+    byId("haMessage").textContent = "无法读取 MQTT 配置。";
+  }
+}
+haForm.onsubmit = async (event) => {
+  event.preventDefault();
+  const button = haForm.querySelector("button[type=submit]");
+  button.disabled = true;
+  const params = new URLSearchParams();
+  params.set("enabled", haForm.elements.enabled.checked ? "1" : "0");
+  for (const name of ["host","port","username","password","baseTopic","discoveryPrefix"]) {
+    params.set(name, haForm.elements[name].value);
+  }
+  if (haForm.elements.clearPassword.checked) params.set("clearPassword", "1");
+  try {
+    const response = await fetch("/api/ha", {method:"POST",body:params});
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error || "保存失败");
+    haForm.elements.password.value = "";
+    haForm.elements.clearPassword.checked = false;
+    byId("haMessage").textContent = "配置已保存。当前状态：" + data.status;
+  } catch (error) {
+    byId("haMessage").textContent = "保存失败：" + error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
+loadHaConfig();
 refresh();
 setInterval(() => { if (!before && !document.hidden && !bodyDialog.open) refresh(); }, 3500);
 </script>
