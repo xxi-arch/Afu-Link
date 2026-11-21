@@ -113,7 +113,7 @@ void appendNumber(String &json, const char *key, double value, uint8_t decimals,
   json += ",\"";
   json += key;
   json += "\":";
-  if (available) json += String(value, decimals);
+  if (available) json += String(value, static_cast<unsigned int>(decimals));
   else json += "null";
 }
 
