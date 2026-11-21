@@ -119,6 +119,8 @@ Discovery 前缀和数据前缀均可在 Web 页面修改。
 
 当前实现使用明文 MQTT TCP（默认 1883），没有 TLS；MQTT 密码保存在 ESP32 NVS 中。设备 Web 配置页目前没有登录认证，应仅在可信家庭局域网访问。
 
+Wi-Fi 和 OTA 凭据已改为从本地忽略文件 `src/secrets.h` 读取，复制 `src/secrets.example.h` 后填写。由于旧凭据曾存在于公开仓库历史中，即使当前分支删除了明文，也应立即轮换 Wi-Fi 和 OTA 密码。
+
 建议后续迭代：
 
 1. 将待上传测量队列持久化到 LittleFS，支持断电补传。
