@@ -1,13 +1,13 @@
 name: PlatformIO build
 
 on:
-  push:
-    branches:
-      - main
-      - feat/home-assistant-mqtt
   pull_request:
     branches:
       - main
+
+concurrency:
+  group: platformio-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
