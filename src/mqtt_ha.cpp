@@ -220,6 +220,12 @@ bool publishDiscovery() {
       payload += ",\"state_class\":\"";
       payload += sensor.stateClass;
       payload += '"';
+      payload += ",\"force_update\":true";
+    }
+    if (strcmp(sensor.id, "measurement_time") == 0) {
+      payload += ",\"json_attributes_topic\":\"";
+      payload += stateTopic;
+      payload += '"';
     }
     payload += ",\"availability_topic\":\"";
     payload += availabilityTopic;
