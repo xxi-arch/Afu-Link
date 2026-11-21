@@ -21,10 +21,11 @@ HA 需要先配置 MQTT 集成和一个可用的 MQTT Broker（例如 Mosquitto 
 
 ## 构建
 
-使用 PlatformIO：
-
-- 环境：`usb`（串口烧录）
-- 环境：`ota`（网络 OTA）
+1. 将 `src/secrets.example.h` 复制为 `src/secrets.h`，填写 Wi-Fi SSID、Wi-Fi 密码和 OTA 密码。
+2. 使用 PlatformIO：
+   - 环境：`usb`（串口烧录）
+   - 环境：`ota`（网络 OTA）
+3. OTA 构建 / 上传时，在运行 PlatformIO 的环境中设置 `AFU_OTA_PASSWORD`，使其与 `src/secrets.h` 中的 OTA 密码一致。
 
 首次构建会通过 PlatformIO 安装 PubSubClient 依赖。
 
