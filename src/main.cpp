@@ -7,7 +7,7 @@
 #include <ctime>
 
 #include "history.h"
-#include "mqtt_ha.h"
+#include "ha_http.h"
 #include "scale_ble.h"
 #include "web_page.h"
 
@@ -82,27 +82,16 @@ bool copyArgument(const char *name, char *destination, size_t capacity) {
 }
 
 void sendHaConfig() {
-  const auto config = ha_mqtt::getConfig();
+  const auto config = ha_http::getConfig();
   String json = R"({"enabled":)";
   json += config.enabled ? "true" : "false";
-  json += R"(,"host":")";
-  json += jsonEscape(config.host);
+  json += R"(,"url":")";
+  json += jsonEscape(config.url);
   json += '"';
-  json += R"(,"port":)";
-  json += String(config.port);
-  json += R"(,"username":")";
-  json += jsonEscape(config.username);
-  json += '"';
-  json += R"(,"passwordSet":)";
-  json += config.password[0] ? "true" : "false";
-  json += R"(,"baseTopic":")";
-  json += jsonEscape(config.baseTopic);
-  json += '"';
-  json += R"(,"discoveryPrefix":")";
-  json += jsonEscape(config.discoveryPrefix);
-  json += '"';
+  json += R"(,"tokenSet":)";
+  json += config.token[0] ? "true" : "false";
   json += R"(,"status":")";
-  json += jsonEscape(ha_mqtt::status());
+  json += jsonEscape(ha_http::status());
   json += '"';
   json += '}';
   web.sendHeader("Cache-Control", "no-store");
@@ -110,32 +99,26 @@ void sendHaConfig() {
 }
 
 void receiveHaConfig() {
-  auto config = ha_mqtt::getConfig();
+  auto config = ha_http::getConfig();
   config.enabled = web.arg("enabled") == "1" || web.arg("enabled") == "true";
-  const uint32_t port = readNumber("port", 65535);
-  if (!port || !copyArgument("host", config.host, sizeof(config.host)) ||
-      !copyArgument("username", config.username, sizeof(config.username)) ||
-      !copyArgument("baseTopic", config.baseTopic, sizeof(config.baseTopic)) ||
-      !copyArgument("discoveryPrefix", config.discoveryPrefix, sizeof(config.discoveryPrefix))) {
+  if (!copyArgument("url", config.url, sizeof(config.url))) {
+    web.send(400, "application/json", R"({"error":"invalid_url"})");
+    return;
+  }
+  if (web.arg("clearToken") == "1") {
+    config.token[0] = '\0';
+  } else if (web.arg("token").length() &&
+             !copyArgument("token", config.token, sizeof(config.token))) {
+    web.send(400, "application/json", R"({"error":"token_too_long"})");
+    return;
+  }
+  if (!ha_http::saveConfig(config)) {
     web.send(400, "application/json", R"({"error":"invalid_config"})");
     return;
   }
-  config.port = static_cast<uint16_t>(port);
-  if (web.arg("clearPassword") == "1") {
-    config.password[0] = 0;
-  } else if (web.hasArg("password") && web.arg("password").length()) {
-    if (!copyArgument("password", config.password, sizeof(config.password))) {
-      web.send(400, "application/json", R"({"error":"password_too_long"})");
-      return;
-    }
-  }
-  if (!ha_mqtt::saveConfig(config)) {
-    web.send(400, "application/json", R"({"error":"invalid_config"})");
-    return;
-  }
+  if (config.enabled) ha_http::testConnection();
   sendHaConfig();
 }
-
 }  // namespace
 
 void setup() {
@@ -143,7 +126,7 @@ void setup() {
   Serial.println("AFU scale receiver");
 
   Serial.println(history::begin() ? "Scale: storage ready" : "Scale: storage unavailable");
-  Serial.println(ha_mqtt::begin() ? "HA: MQTT queue ready" : "HA: MQTT queue unavailable");
+  Serial.println(ha_http::begin() ? "HA: REST queue ready" : "HA: REST queue unavailable");
   scale::beginReceiver();
 
   web.on("/", HTTP_GET, [] { web.send_P(200, "text/html; charset=utf-8", kWebPage); });
@@ -191,6 +174,6 @@ void loop() {
     ArduinoOTA.handle();
     web.handleClient();
   }
-  ha_mqtt::loop();
+  ha_http::loop();
   delay(2);
 }
