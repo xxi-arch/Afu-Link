@@ -9,15 +9,26 @@
 - 本地估算 BMI、体脂率及其他身体组成指标。
 - LittleFS 保存测量历史，设备 Web 页面查看记录和维护个人资料。
 - ArduinoOTA 固件升级。
-- MQTT + Home Assistant MQTT Discovery，自动创建体重和身体组成传感器。
+- 通过 Home Assistant REST API 上传体重和身体组成数据，自动创建 17 个状态实体。
 
-## Home Assistant
+## Home Assistant 接入
 
-MQTT 接入需求、Topic、实体清单、配置步骤和当前限制见：
+打开 Afu-Link Web 页面，展开「Home Assistant 接入」：
 
-- [Home Assistant MQTT 接入说明](docs/requirements-home-assistant.md)
+1. 填写 Home Assistant 根地址，例如 `http://192.168.1.10:8123`。
+2. 在 HA 个人资料 → 安全 → 长期访问令牌中创建令牌，粘贴到 Token 输入框。
+3. 勾选启用自动上传，点击「保存并测试连接」。
 
-HA 需要先配置 MQTT 集成和一个可用的 MQTT Broker（例如 Mosquitto Broker）。Afu-Link 不要求安装第三方 HA 前端卡片；它提供原生 MQTT Sensor 实体，可直接使用 HA 自带的 Tile、Sensor、Gauge、History 等卡片。
+不需要安装 Mosquitto、配置 MQTT Broker、Topic 或 HACS。Afu-Link 使用 HA REST API 的 `POST /api/states/<entity_id>` 创建 / 更新实体。
+
+实体包括体重、BMI、体脂率、脂肪重量、肌肉率 / 量、骨骼肌率 / 量、水分率 / 量、蛋白质率 / 量、骨量率 / 量、皮下脂肪率 / 量和最近称重时间。
+
+**REST API 方式的限制：**
+
+- 这些是 HA 运行期间的动态状态实体，不会像 MQTT Discovery 一样注册为一个完整的设备条目；可以用于 HA 仪表盘和自动化。
+- HA 重启后动态实体会消失。Afu-Link 会检测体重实体是否存在，若不存在则从 LittleFS 恢复最近一次测量并重新创建实体。
+- 当前只支持局域网 `http://` 地址，暂不支持 HTTPS。Token 会保存在 ESP32-C3 NVS 中；HTTP 不加密，请勿通过公网或不可信网络使用。
+- Token 需要有写入实体状态的管理员权限；建议为设备单独创建长期访问令牌。
 
 ## 构建
 
@@ -27,10 +38,8 @@ HA 需要先配置 MQTT 集成和一个可用的 MQTT Broker（例如 Mosquitto 
    - 环境：`ota`（网络 OTA）
 3. OTA 构建 / 上传时，在运行 PlatformIO 的环境中设置 `AFU_OTA_PASSWORD`，使其与 `src/secrets.h` 中的 OTA 密码一致。
 
-首次构建会通过 PlatformIO 安装 PubSubClient 依赖。
-
 ## 注意
 
 - 当前体成分数值由固件中的估算算法计算，不代表医疗测量结果，也不保证与蚂蚁阿福 App 的官方算法完全一致。
-- 当前 MQTT 使用 TCP 明文连接，建议仅在可信局域网内使用。
-- 发布前请检查并移除源码及 PlatformIO 配置中的个人 Wi-Fi / OTA 凭据；公开仓库中的旧凭据应及时轮换。
+- 上传队列最多缓存 8 条测量，暂存于 RAM；断电前未成功上传的记录仍保存在 C3 的 LittleFS 历史中，但不会自动逐条补传。
+- 公开仓库历史中曾包含 Wi-Fi / OTA 凭据，即使当前源码已改为本地 secrets 文件，也应轮换旧密码。
