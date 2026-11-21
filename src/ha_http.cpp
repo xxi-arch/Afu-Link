@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <esp_system.h>
 
+#include <cctype>
 #include <ctime>
 #include <cstring>
 
@@ -64,6 +65,7 @@ bool apiReady = false;
 uint32_t lastApiCheck = 0;
 uint32_t lastEntityCheck = 0;
 uint32_t lastRequestAt = 0;
+uint32_t requestDelayMs = kRequestIntervalMs;
 char currentStatus[64] = "未配置";
 
 bool validUrl(const char *value) {
@@ -300,6 +302,8 @@ bool saveConfig(const Config &value) {
   apiReady = false;
   lastApiCheck = 0;
   lastEntityCheck = 0;
+  lastRequestAt = 0;
+  requestDelayMs = kRequestIntervalMs;
   activeValid = false;
   activeSensor = 0;
   setStatus(currentConfig.enabled ? "配置已保存，等待测试" : "未启用");
@@ -339,11 +343,12 @@ void loop() {
   if (!pendingQueue || !currentConfig.enabled) return;
   if (WiFi.status() != WL_CONNECTED) {
     apiReady = false;
+    lastApiCheck = 0;
     setStatus("设备 Wi-Fi 未连接");
     return;
   }
 
-  if (!apiReady || millis() - lastApiCheck >= kApiCheckIntervalMs) {
+  if (!lastApiCheck || millis() - lastApiCheck >= kApiCheckIntervalMs) {
     const int code = request("/api/");
     lastApiCheck = millis();
     if (code != 200) {
@@ -353,10 +358,10 @@ void loop() {
     }
     apiReady = true;
     setStatus("HA 已连接");
-    if (!lastEntityCheck) lastEntityCheck = 1;
   }
+  if (!apiReady) return;
 
-  if (millis() - lastEntityCheck >= kEntityCheckIntervalMs) {
+  if (!lastEntityCheck || millis() - lastEntityCheck >= kEntityCheckIntervalMs) {
     lastEntityCheck = millis();
     const int code = request("/api/states/sensor.afu_link_weight");
     if (code == 404) {
@@ -371,7 +376,7 @@ void loop() {
     }
   }
 
-  if (millis() - lastRequestAt < kRequestIntervalMs) return;
+  if (lastRequestAt && millis() - lastRequestAt < requestDelayMs) return;
   if (!activeValid) {
     if (xQueuePeek(pendingQueue, &activeMeasurement, 0) != pdPASS) return;
     activeValid = true;
@@ -381,6 +386,7 @@ void loop() {
   const int code = publishSensor(activeMeasurement, activeSensor);
   lastRequestAt = millis();
   if (code >= 200 && code < 300) {
+    requestDelayMs = kRequestIntervalMs;
     ++activeSensor;
     if (activeSensor >= sizeof(kSensors) / sizeof(kSensors[0])) {
       PendingMeasurement completed{};
@@ -393,6 +399,7 @@ void loop() {
     return;
   }
 
+  requestDelayMs = kRetryIntervalMs;
   setHttpStatus(code);
   if (code == 401 || code == 403 || code < 0 || code == 503) apiReady = false;
 }
