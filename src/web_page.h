@@ -236,7 +236,10 @@ haForm.onsubmit = async (event) => {
 };
 loadHaConfig();
 refresh();
-setInterval(() => { if (!before && !document.hidden && !bodyDialog.open) refresh(); }, 3500);
+setInterval(() => {
+  if (!before && !document.hidden && !bodyDialog.open) refresh();
+  if (!document.hidden && haForm.closest("details").open) loadHaConfig();
+}, 3500);
 </script>
 </body>
 </html>)HTML";
